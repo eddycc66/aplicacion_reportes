@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>GeoVisor Samaipata</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Bootstrap -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Font Awesome para iconos -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <style>
+    html, body { 
+      height: 100%; 
+      margin: 0; 
+      padding: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    
+    #map { 
+      width: 70%; 
+      height: 100vh; 
+      float:left; 
+      z-index: 1;
+    }
+    
+    #sidebar { 
+      width: 30%; 
+      height: 100vh; 
+      float:right; 
+      overflow-y: auto; 
+      border-left: 1px solid #ccc; 
+      padding: 15px;
+      background-color: #f8f9fa;
+      box-shadow: -2px 0 5px rgba(0,0,0,0.1);
+    }
+    
+    .btn { 
+      margin-top: 8px; 
+      margin-bottom: 8px;
+    }
+    
+    .brand { 
+      font-weight: 700;
+      color: #2c3e50;
+    }
+    
+    .muted { 
+      color: #6c757d;
+      font-size: 0.85rem;
+    }
+    
+    .section-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #2c3e50;
+      margin-bottom: 10px;
+      padding-bottom: 5px;
+      border-bottom: 1px solid #dee2e6;
+    }
+    
+    .info-item {
+      margin-bottom: 8px;
+      padding: 5px;
+      border-radius: 4px;
+      background-color: white;
+      border-left: 3px solid #4e73df;
+    }
+    
+    .info-label {
+      font-weight: 600;
+      color: #2c3e50;
+    }
+    
+    .legend {
+      padding: 10px;
+      background: white;
+      border-radius: 5px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+    }
+    
+    .legend i {
+      width: 18px;
+      height: 18px;
+      float: left;
+      margin-right: 8px;
+      opacity: 0.7;
+    }
+    
+    .loading {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(0,0,0,.3);
+      border-radius: 50%;
+      border-top-color: #fff;
+      animation: spin 1s ease-in-out infinite;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    /* Responsividad */
+    @media (max-width: 992px) {
+      #map, #sidebar {
+        width: 100%;
+        height: 50vh;
+        float: none;
+      }
+    }
+
+    .alert {
+      padding: 8px 12px;
+      margin-bottom: 8px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <div id="sidebar">
+    <div class="d-flex justify-content-between align-items-center">
+      <h4 class="brand mb-0">
+        <i class="fas fa-map-marked-alt"></i> GeoVisor Samaipata
+      </h4>
+      <span class="muted">EPSG:32720</span>
+    </div>
+    <hr class="my-2">
+
+    <!-- CONSULTAS -->
+    <div class="mb-3">
+      <h6 class="section-title"><i class="fas fa-search"></i> Consultas</h6>
+      <div class="input-group input-group-sm">
+        <input id="buscarPredio" type="text" class="form-control" placeholder="ID Predio (ej: 12318)">
+        <button class="btn btn-primary" id="btnBuscar">
+          <i class="fas fa-search"></i> Consultar
+        </button>
+      </div>
+      <div id="loadingIndicator" class="mt-2 text-center" style="display: none;">
+        <div class="loading"></div> Buscando...
+      </div>
+    </div>
+
+    <!-- INFO LOTE -->
+    <div class="mb-3">
+      <h6 class="section-title"><i class="fas fa-info-circle"></i> Información del lote</h6>
+      <div id="infoLote" class="muted small p-2 bg-light rounded">
+        Seleccione un lote en el mapa o consulte por ID...
+      </div>
+      <button id="btnReporte" class="btn btn-success w-100 mt-2" disabled>
+        <i class="fas fa-file-pdf"></i> Generar Reporte PDF
+      </button>
+    </div>
+
+    <!-- DASHBOARD -->
+    <div class="mb-3">
+      <h6 class="section-title"><i class="fas fa-chart-bar"></i> Dashboard: Lotes por uso de suelo</h6>
+      <div style="position: relative; height: 250px;">
+        <canvas id="graficoUsoSuelo"></canvas>
+      </div>
+    </div>
+
+    <!-- LEYENDA -->
+    <div class="mb-3">
+      <h6 class="section-title"><i class="fas fa-layer-group"></i> Leyenda</h6>
+      <div id="legend" class="legend small">
+        <div><i style="background: #4e73df; opacity: 0.7;"></i> Lotes</div>
+        <div><i style="background: #1cc88a; opacity: 0.7;"></i> Actualizaciones</div>
+        <div><i style="background: #e74a3b; opacity: 0.7;"></i> Vías</div>
+      </div>
+    </div>
+
+    <div class="mt-3 small muted text-center">
+      <i class="fas fa-lightbulb"></i> Consejo: active/desactive capas desde el control del mapa.
+    </div>
+  </div>
+
+  <script>
+    // ---- CONFIGURACIÓN ----
+    const CONFIG = {
+      geoserverBaseUrl: "http://localhost:8080/geoserver/samaipata/wms",
+      apiBaseUrl: window.location.origin // Usar el mismo origen
+    };
+
+    // ---- MAPA ----
+    const map = L.map('map').setView([-18.18, -63.83], 14);
+    
+    // Capa base OSM
+    const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors',
+      maxZoom: 19
+    }).addTo(map);
+
+    // Capas WMS desde GeoServer
+    const lotes = L.tileLayer.wms(CONFIG.geoserverBaseUrl, {
+      layers: "samaipata:lotes_limpios",
+      format: "image/png",
+      transparent: true,
+      opacity: 0.7
+    }).addTo(map);
+
+    const actualizaciones = L.tileLayer.wms(CONFIG.geoserverBaseUrl, {
+      layers: "samaipata:actualizaciones_campo",
+      format: "image/png",
+      transparent: true,
+      opacity: 0.7
+    });
+
+    const vias = L.tileLayer.wms(CONFIG.geoserverBaseUrl, {
+      layers: "samaipata:vias",
+      format: "image/png",
+      transparent: true,
+      opacity: 0.7
+    });
+
+    // Control de capas
+    L.control.layers(
+      {"OpenStreetMap": osm},
+      {
+        "Lotes": lotes, 
+        "Actualizaciones": actualizaciones, 
+        "Vías": vias
+      },
+      { collapsed: true }
+    ).addTo(map);
+
+    // Estado UI
+    let idPredioSeleccionado = null;
+    let chart = null;
+
+    // ---- FUNCIONES DE UTILIDAD ----
+    function setInfo(textoHtml) {
+      document.getElementById("infoLote").innerHTML = textoHtml;
+    }
+
+    function enableReporte(enable) {
+      document.getElementById("btnReporte").disabled = !enable;
+    }
+
+    function showLoading(show) {
+      document.getElementById("loadingIndicator").style.display = show ? 'block' : 'none';
+    }
+
+    function showError(mensaje) {
+      setInfo(`<div class="alert alert-danger">${mensaje}</div>`);
+    }
+
+    function showSuccess(mensaje) {
+      setInfo(`<div class="alert alert-success">${mensaje}</div>`);
+    }
+
+    function formatInfoHTML(data) {
+      return `
+        <div class="info-item"><span class="info-label">ID Predio:</span> ${data.id_predio || 'N/D'}</div>
+        <div class="info-item"><span class="info-label">Manzano:</span> ${data.manzano || 'N/D'}</div>
+        <div class="info-item"><span class="info-label">Lote:</span> ${data.lote || 'N/D'}</div>
+        <div class="info-item"><span class="info-label">Uso de suelo:</span> ${data.uso_suelo || 'N/D'}</div>
+        <div class="info-item"><span class="info-label">Propietario:</span> ${data.nombre_y_apellidos || data.propietari || 'N/D'}</div>
+        <div class="info-item"><span class="info-label">CI:</span> ${data.carnet || 'N/D'}</div>
+        <div class="info-item"><span class="info-label">Tipo de inmueble:</span> ${data.tipo_inmueble || 'N/D'}</div>
+        <div class="info-item"><span class="info-label">Sup. construcción:</span> ${data.suconstruccion_m2 || 'N/D'} m²</div>
+        <div class="info-item"><span class="info-label">Uso de edificación:</span> ${data.uso_de_edificacion || 'N/D'}</div>
+        <div class="info-item"><span class="info-label">Tipología:</span> ${data.tipologia_const || 'N/D'}</div>
+      `;
+    }
+
+    // ---- Click en mapa -> proxy GFI -> popup + panel ----
+    map.on('click', async (e) => {
+      try {
+        const bbox = map.getBounds().toBBoxString();
+        const size = map.getSize();
+        const x = Math.floor(e.containerPoint.x);
+        const y = Math.floor(e.containerPoint.y);
+
+        const url = `${CONFIG.apiBaseUrl}/gfi?bbox=${encodeURIComponent(bbox)}&width=${size.x}&height=${size.y}&x=${x}&y=${y}`;
+
+        showLoading(true);
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Error del servidor (${response.status}): ${errorText}`);
+        }
+        
+        const gfi = await response.json();
+        
+        if (!gfi.features || !gfi.features.length) {
+          showError("No se encontró información en esta ubicación. Asegúrese de hacer clic sobre un lote.");
+          enableReporte(false);
+          return;
+        }
+
+        const props = gfi.features[0].properties || {};
+        idPredioSeleccionado = props.id_predio;
+
+        if (!idPredioSeleccionado) {
+          showError("El lote seleccionado no tiene ID de predio asociado.");
+          enableReporte(false);
+          return;
+        }
+
+        // Cargar info desde datos_distrito
+        const infoResponse = await fetch(`${CONFIG.apiBaseUrl}/info_predio?id_predio=${encodeURIComponent(idPredioSeleccionado)}`);
+        
+        if (!infoResponse.ok) {
+          const errorText = await infoResponse.text();
+          throw new Error(`Error del servidor (${infoResponse.status}): ${errorText}`);
+        }
+        
+        const info = await infoResponse.json();
+        
+        if (info.error) {
+          showError("Predio no encontrado en la base de datos: " + info.error);
+          enableReporte(false);
+          return;
+        }
+
+        const popupHtml = `
+          <div style="min-width:240px">
+            <b>ID Predio:</b> ${idPredioSeleccionado}<br/>
+            <b>Propietario:</b> ${info.nombre_y_apellidos || info.propietari || 'N/D'}<br/>
+            <b>CI:</b> ${info.carnet || 'N/D'}<br/>
+            <b>Tipo de inmueble:</b> ${info.tipo_inmueble || 'N/D'}<br/>
+          </div>
+        `;
+        
+        L.popup()
+          .setLatLng(e.latlng)
+          .setContent(popupHtml)
+          .openOn(map);
+
+        setInfo(formatInfoHTML(info));
+        enableReporte(true);
+      } catch (error) {
+        console.error("Error al obtener información:", error);
+        showError("Error al cargar información del predio: " + error.message);
+        enableReporte(false);
+      } finally {
+        showLoading(false);
+      }
+    });
+
+    // ---- Botón consultar por ID ----
+    document.getElementById("btnBuscar").addEventListener("click", async () => {
+      const val = document.getElementById("buscarPredio").value.trim();
+      if (!val) {
+        alert("Por favor, ingrese un ID Predio");
+        return;
+      }
+      
+      idPredioSeleccionado = val;
+      showLoading(true);
+
+      try {
+        const response = await fetch(`${CONFIG.apiBaseUrl}/info_predio?id_predio=${encodeURIComponent(val)}`);
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Error del servidor (${response.status}): ${errorText}`);
+        }
+        
+        const info = await response.json();
+        
+        if (info.error) {
+          showError("Predio no encontrado: " + info.error);
+          enableReporte(false);
+          return;
+        }
+
+        setInfo(formatInfoHTML(info));
+        enableReporte(true);
+        
+      } catch (error) {
+        console.error("Error al buscar predio:", error);
+        showError("Error al consultar el predio: " + error.message);
+        enableReporte(false);
+      } finally {
+        showLoading(false);
+      }
+    });
+
+    // ---- Botón reporte ----
+    document.getElementById("btnReporte").addEventListener("click", () => {
+      if (!idPredioSeleccionado) {
+        alert("Primero seleccione o consulte un predio.");
+        return;
+      }
+      
+      // Abrir el reporte en una nueva pestaña
+      window.open(`${CONFIG.apiBaseUrl}/reporte?id_predio=${encodeURIComponent(idPredioSeleccionado)}`, "_blank");
+    });
+
+    // ---- Dashboard (Chart.js) ----
+    async function cargarDashboard() {
+      try {
+        const response = await fetch(`${CONFIG.apiBaseUrl}/estadisticas/uso_suelo`);
+        
+        if (!response.ok) {
+          throw new Error(`Error al cargar estadísticas: ${response.status}`);
+        }
+        
+        const rows = await response.json();
+        
+        const labels = rows.map(r => r.uso_suelo || 'Sin clasificar');
+        const data = rows.map(r => r.cantidad);
+        const backgroundColors = [
+          '#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b', 
+          '#858796', '#f8f9fc', '#5a5c69', '#2c9faf', '#eaecf4'
+        ];
+
+        const ctx = document.getElementById('graficoUsoSuelo').getContext('2d');
+        
+        // Destruir gráfico anterior si existe
+        if (chart) {
+          chart.destroy();
+        }
+        
+        chart = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: 'Cantidad de lotes',
+              data: data,
+              backgroundColor: backgroundColors.slice(0, labels.length),
+              borderColor: 'rgba(0, 0, 0, 0.1)',
+              borderWidth: 1
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              y: {
+                beginAtZero: true,
+                title: {
+                  display: true,
+                  text: 'Cantidad'
+                }
+              },
+              x: {
+                title: {
+                  display: true,
+                  text: 'Uso de suelo'
+                },
+                ticks: {
+                  maxRotation: 45,
+                  minRotation: 45
+                }
+              }
+            },
+            plugins: {
+              legend: {
+                display: false
+              },
+              tooltip: {
+                callbacks: {
+                  label: function(context) {
+                    return `Lotes: ${context.raw}`;
+                  }
+                }
+              }
+            }
+          }
+        });
+      } catch (error) {
+        console.error("Error al cargar dashboard:", error);
+        document.getElementById('graficoUsoSuelo').innerHTML = 
+          '<div class="text-center text-danger">Error al cargar el dashboard. Verifica que el servidor Flask esté ejecutándose.</div>';
+      }
+    }
+
+    // Inicializar la aplicación
+    cargarDashboard();
+
+    // Verificar estado del servidor al cargar la página
+    fetch(`${CONFIG.apiBaseUrl}/health`)
+      .then(response => response.json())
+      .then(data => {
+        console.log("Estado del servidor:", data);
+      })
+      .catch(error => {
+        console.error("Error verificando estado del servidor:", error);
+        showError("No se puede conectar con el servidor. Asegúrese de que Flask esté ejecutándose.");
+      });
+  </script>
+</body>
+</html>
